@@ -25,12 +25,11 @@ api = os.environ["GROQ_API_KEY"]
 endpoint = "https://api.groq.com/openai/v1/chat/completions"
 headers = {"Authorization": f"Bearer {api}", "Content-Type": "application/json"}
 
-# ลองหลาย model ถ้าตัวไหนโดนบล็อกก็ข้ามไปตัวถัดไป
+# ใช้เฉพาะ model ที่อยู่ใน Allowed Models ของ project
 MODELS = [
     "llama-3.1-8b-instant",
     "llama-3.3-70b-versatile",
-    "gpt-oss-20b",
-    "qwen3-32b",
+    "groq/compound",
 ]
 
 text = None
@@ -46,7 +45,7 @@ for model in MODELS:
         print(f"model {model} ใช้ไม่ได้:", data.get("error", data))
 
 if text is None:
-    raise SystemExit("ลองทุก model แล้วใช้ไม่ได้เลย ดู error ด้านบน หรือไปเปิด model ที่ console.groq.com/settings/project/limits")
+    raise SystemExit("ลองทุก model แล้วใช้ไม่ได้เลย ไปที่ console.groq.com/settings/project/limits แล้วกด Clear ที่ Allowed Models")
 
 # Telegram จำกัด 4096 ตัวอักษร แบ่งส่งเป็นก้อน
 def send_telegram(msg):
