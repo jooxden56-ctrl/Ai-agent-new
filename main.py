@@ -20,19 +20,24 @@ if not items:
 
 prompt = "สรุปข่าวต่อไปนี้เป็นภาษาไทย แบ่งหัวข้อ AI, หุ้น, คริปโต พร้อมผลกระทบต่อการลงทุน\n\n" + "\n".join(items[:15])
 
-api = os.environ["GEMINI_API_KEY"]
-endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api}"
-payload = {"contents": [{"parts": [{"text": prompt}]}]}
+# ---- Groq API (OpenAI-compatible) ----
+api = os.environ["GROQ_API_KEY"]
+endpoint = "https://api.groq.com/openai/v1/chat/completions"
+headers = {"Authorization": f"Bearer {api}", "Content-Type": "application/json"}
+payload = {
+    "model": "llama-3.3-70b-versatile",
+    "messages": [{"role": "user", "content": prompt}],
+}
 
-r = requests.post(endpoint, json=payload, timeout=60)
+r = requests.post(endpoint, headers=headers, json=payload, timeout=60)
 data = r.json()
 
-# เช็ค error ก่อนดึง candidates
-if "candidates" not in data:
-    print("Gemini API response:", data)
-    raise SystemExit("Gemini ไม่ได้ส่ง candidates กลับมา ดู error ด้านบน")
+# เช็ค error ก่อนดึงผลลัพธ์
+if "choices" not in data:
+    print("Groq API response:", data)
+    raise SystemExit("Groq ไม่ได้ส่ง choices กลับมา ดู error ด้านบน")
 
-text = data["candidates"][0]["content"]["parts"][0]["text"]
+text = data["choices"][0]["message"]["content"]
 
 # Telegram จำกัด 4096 ตัวอักษร แบ่งส่งเป็นก้อน
 def send_telegram(msg):
