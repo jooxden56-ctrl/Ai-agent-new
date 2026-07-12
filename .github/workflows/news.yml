@@ -3,8 +3,8 @@ name: Daily News
 on:
   workflow_dispatch:
   schedule:
-    # ทุก 1 ชั่วโมง ตลอด 24 ชม.
-    - cron: '0 * * * *'
+    # ทุก 1 ชั่วโมง ที่นาที 17 (เลี่ยงช่วง :00 ที่ GitHub แออัด)
+    - cron: '17 * * * *'
 
 jobs:
   news:
