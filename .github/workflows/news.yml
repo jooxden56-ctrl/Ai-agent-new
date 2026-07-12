@@ -2,8 +2,10 @@ name: Daily News
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [run-news]
   schedule:
-    # ทุก 1 ชั่วโมง ที่นาที 17 (เลี่ยงช่วง :00 ที่ GitHub แออัด)
+    # เก็บ schedule ไว้เป็นตัวสำรอง (GitHub cron ไม่ค่อยตรง)
     - cron: '17 * * * *'
 
 jobs:
