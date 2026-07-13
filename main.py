@@ -211,12 +211,12 @@ api = os.environ["GROQ_API_KEY"]
 endpoint = "https://api.groq.com/openai/v1/chat/completions"
 headers = {"Authorization": f"Bearer {api}", "Content-Type": "application/json"}
 
-MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+MODELS = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"]
 
 text = None
 for model in MODELS:
     payload = {"model": model, "messages": [{"role": "user", "content": prompt}],
-               "temperature": 0.55, "max_tokens": 4000}
+               "temperature": 0.55, "max_tokens": 2500}
     r = requests.post(endpoint, headers=headers, json=payload, timeout=120)
     data = r.json()
     if "choices" in data:
