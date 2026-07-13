@@ -7,7 +7,6 @@ on:
   schedule:
     - cron: '17 * * * *'
 
-# ให้ workflow มีสิทธิ์เขียนไฟล์กลับ repo
 permissions:
   contents: write
 
@@ -27,10 +26,10 @@ jobs:
       - run: python main.py
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-      # บันทึกไฟล์กันข่าวซ้ำกลับเข้า repo
       - name: Save sent news state
         run: |
           git config user.name "github-actions"
