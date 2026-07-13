@@ -1,5 +1,5 @@
 import os, requests, feedparser, json, hashlib
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 
 RSS_STOCK = [
     "https://feeds.content.dowjones.io/public/rss/mw_topstories",
@@ -36,6 +36,7 @@ def title_id(title):
 seen = load_seen()
 
 def fetch(urls, n=6):
+    """ดึงข่าวใหม่ พร้อมเก็บ (หัวข้อ, ลิงก์) แยกกัน"""
     out = []
     for url in urls:
         try:
@@ -45,7 +46,8 @@ def fetch(urls, n=6):
                 if tid in seen:
                     continue
                 seen.add(tid)
-                out.append(f"- {e.title}\n  {getattr(e,'link','')}")
+                link = getattr(e, 'link', '')
+                out.append({"title": e.title, "link": link})
         except Exception as ex:
             print("RSS error:", url, ex)
     return out
@@ -62,19 +64,53 @@ if total_new == 0:
     print("ไม่มีข่าวใหม่ ไม่ส่ง")
     raise SystemExit(0)
 
-now_th = datetime.now(timezone(timedelta(hours=7)))
+# ---- คำนวณ DST อัตโนมัติ (US Eastern) ----
+# DST สหรัฐ: อาทิตย์ที่ 2 ของ มี.ค. ถึง อาทิตย์ที่ 1 ของ พ.ย.
+def is_us_dst(dt_utc):
+    year = dt_utc.year
+    # อาทิตย์ที่ 2 ของมีนาคม
+    march = date(year, 3, 8)
+    dst_start = march + timedelta(days=(6 - march.weekday()) % 7)  # อาทิตย์แรก >= 8 มี.ค.
+    # อาทิตย์ที่ 1 ของพฤศจิกายน
+    nov = date(year, 11, 1)
+    dst_end = nov + timedelta(days=(6 - nov.weekday()) % 7)
+    today = dt_utc.date()
+    return dst_start <= today < dst_end
+
+now_utc = datetime.now(timezone.utc)
+et_offset = -4 if is_us_dst(now_utc) else -5   # EDT=-4 (ร้อน), EST=-5 (หนาว)
+now_et = now_utc + timedelta(hours=et_offset)
+now_th = now_utc + timedelta(hours=7)
+
 date_str = now_th.strftime("%d/%m/%Y %H:%M")
-now_et = now_th - timedelta(hours=11)  # DST (มี.ค.-พ.ย.) | หน้าหนาวเปลี่ยนเป็น 12
 et_time = now_et.strftime("%H:%M")
 et_hour, et_min = now_et.hour, now_et.minute
-et_weekday = now_et.weekday()  # 0=จันทร์ ... 5=เสาร์ 6=อาทิตย์
+et_weekday = now_et.weekday()
 mins = et_hour * 60 + et_min
 market_open, market_close = 9*60+30, 16*60
 
-if et_weekday >= 5:
-    # เสาร์-อาทิตย์ ตลาดปิดทำการ
+# ---- วันหยุดตลาดสหรัฐ (NYSE) ----
+US_HOLIDAYS_2026 = {
+    "2026-01-01",  # New Year
+    "2026-01-19",  # MLK Day
+    "2026-02-16",  # Presidents Day
+    "2026-04-03",  # Good Friday
+    "2026-05-25",  # Memorial Day
+    "2026-06-19",  # Juneteenth
+    "2026-07-03",  # Independence Day (obs)
+    "2026-09-07",  # Labor Day
+    "2026-11-26",  # Thanksgiving
+    "2026-12-25",  # Christmas
+}
+et_date_str = now_et.strftime("%Y-%m-%d")
+is_holiday = et_date_str in US_HOLIDAYS_2026
+
+if is_holiday:
+    mode_header = "🎌 ตลาดสหรัฐหยุด (วันหยุดพิเศษ)"
+    mode_instruction = "โหมดวันหยุดตลาด (ตลาดหุ้นสหรัฐปิดวันนี้): สรุปข่าวสำคัญ, ประเด็นที่อาจกระทบตลาดเมื่อกลับมาเปิด, ไม่ต้องรายงานราคาเรียลไทม์"
+elif et_weekday >= 5:
     mode_header = "🛌 ตลาดสหรัฐปิดทำการ (สุดสัปดาห์)"
-    mode_instruction = "โหมดสุดสัปดาห์ (ตลาดหุ้นสหรัฐปิด เสาร์-อาทิตย์): สรุปข่าวสำคัญช่วงสุดสัปดาห์, ประเด็นที่อาจกระทบตลาดเมื่อเปิดวันจันทร์, ไม่ต้องรายงานราคาเรียลไทม์เพราะตลาดปิด"
+    mode_instruction = "โหมดสุดสัปดาห์ (ตลาดหุ้นสหรัฐปิด เสาร์-อาทิตย์): สรุปข่าวสำคัญช่วงสุดสัปดาห์, ประเด็นที่อาจกระทบตลาดเมื่อเปิดวันจันทร์, ไม่ต้องรายงานราคาเรียลไทม์"
 elif mins < market_open:
     mode_header = "☀️ ก่อนตลาดสหรัฐเปิด (Pre-market)"
     mode_instruction = "โหมดก่อนตลาดเปิด: เน้นสิ่งที่ต้องจับตาก่อนตลาดเปิด, ทิศทาง futures, ตัวเลขเศรษฐกิจที่จะประกาศ"
@@ -85,53 +121,90 @@ else:
     mode_header = "🌙 ตลาดสหรัฐปิดแล้ว (Closing)"
     mode_instruction = "โหมดปิดตลาด: เน้นสรุปตลาดปิดยังไง, หุ้นเด่นวันนี้, after-hours"
 
-prompt = f"""คุณเป็นนักวิเคราะห์การเงินระดับสถาบัน (sell-side analyst) สรุปและวิเคราะห์ข่าวต่อไปนี้เป็นภาษาไทยแบบเข้มข้น เจาะลึก มืออาชีพ
+def fmt(items):
+    return "\n".join(f"- {it['title']}\n  {it['link']}" for it in items) if items else "(ไม่มีข่าวใหม่)"
 
-**กฎการเขียน (สำคัญ):**
-- ห้ามใช้เครื่องหมาย Markdown เช่น ###, **, __ เด็ดขาด ใช้อีโมจีและข้อความล้วนเท่านั้น
-- เขียนเป็นภาษาไทยทั้งหมด ห้ามมีตัวอักษรจีน ญี่ปุ่น เวียดนาม หรือภาษาอื่นปนเด็ดขาด (ยกเว้นชื่อบริษัท/ticker ภาษาอังกฤษ) หากข่าวต้นฉบับมีภาษาอื่นให้แปลเป็นไทยให้หมด
-- **ดึงตัวเลขทุกตัวที่ปรากฏในข่าวมาใส่** (% เปลี่ยนแปลง, ราคา, จุดดัชนี, มูลค่าดีล, EPS, รายได้) อย่าละเลยตัวเลข
-- ทุกบริษัท/หุ้นใส่ ticker ในวงเล็บ เช่น Nvidia (NVDA), Apple (AAPL)
-- ทุกดัชนีใส่ชื่อย่อ เช่น S&P 500 (SPX), Nasdaq (IXIC), Dow (DJI)
-- ใส่ระดับความสำคัญนำหน้าข่าวเด่น: 🔴 กระทบแรง/ด่วน, 🟡 ปานกลาง, 🟢 ทั่วไป
+prompt = f"""คุณเป็นนักวิเคราะห์การเงินมืออาชีพ เขียนรายงานสรุปข่าวเป็นภาษาไทย โดยยึด "กฎการเขียนรายงาน" อย่างเคร่งครัด ห้ามละเมิด
 
-**โครงสร้างข้อความ:**
+=== กฎการเขียนรายงาน (ห้ามละเมิด) ===
+
+1. ห้ามแต่งหรือคาดเดาข้อมูล
+- สรุปเฉพาะสิ่งที่อยู่ในข่าวจริงเท่านั้น
+- หากไม่มีข้อมูล ให้เขียนว่า "ไม่มีข้อมูลสำคัญ"
+- ห้ามใส่ตัวเลข % หรือราคา ที่ไม่ได้ปรากฏในข่าวจริง
+
+2. ข่าวหุ้น
+- เลือกเฉพาะข่าวที่มีผลต่อราคาหุ้น
+- สรุปสั้น 1-3 ประโยคต่อข่าว
+- ห้ามใช้คำว่า "หุ้นที่ดีที่สุด" หรือ "น่าซื้อ" เว้นแต่เป็นคำพูดของนักวิเคราะห์ และต้องระบุว่า "นักวิเคราะห์มองว่า..."
+
+3. ข่าวเศรษฐกิจ
+- รายงานเฉพาะตัวเลขเศรษฐกิจที่ประกาศ หรือมีกำหนดประกาศ
+- หากไม่มี ให้เขียนว่า "วันนี้ไม่มีตัวเลขเศรษฐกิจสำคัญ"
+
+4. ข่าวโลก
+- เฉพาะข่าวที่อาจส่งผลต่อตลาดการเงิน เช่น สงคราม นโยบายการค้า ธนาคารกลาง ราคาน้ำมัน ภัยธรรมชาติขนาดใหญ่
+
+5. Sector วันนี้
+- วิเคราะห์จากภาพรวมข่าวทั้งหมด
+- ห้ามสรุปว่า Sector ใดร้อนแรงเพียงเพราะมีข่าวหุ้น 1-2 ตัว
+- หากข้อมูลไม่พอ ให้เขียนว่า "ยังไม่มี Sector เด่นชัด"
+
+6. Market Sentiment
+- ห้ามใช้คำว่า Risk-on หรือ Risk-off หากไม่มีข้อมูลสนับสนุน (เช่น S&P 500 Futures, Nasdaq Futures, VIX, US Treasury Yield, Dollar Index)
+- ข้อมูลข่าว RSS ที่ให้มามักไม่มีตัวเลขเหล่านี้ ดังนั้นโดยปกติให้ใช้คำว่า "Sentiment ยังเป็นกลาง" เว้นแต่ในข่าวระบุตัวเลขเหล่านี้ชัดเจน
+
+7. ปัจจัยต้องจับตา
+- ระบุเฉพาะเหตุการณ์ที่จะเกิดขึ้นจริงและมีชื่อชัดเจน เช่น CPI, PPI, FOMC, Earnings, GDP, Jobless Claims
+- ห้ามเขียนข้อความทั่วไปลอยๆ เช่น "จับตาเศรษฐกิจ" หรือ "ติดตามตลาด"
+- หากในข่าวไม่ได้ระบุเหตุการณ์ที่กำหนดไว้ ให้เขียนว่า "ไม่มีปัจจัยที่ระบุชัดในวันนี้"
+
+8. ตรวจสอบก่อนส่ง
+- ไม่มีข้อความขัดแย้งกันเอง
+- ไม่มีตัวอักษรแปลกหรือภาษาต่างชาติปน (จีน ญี่ปุ่น เกาหลี เวียดนาม) — แปลเป็นไทยให้หมด ยกเว้นชื่อบริษัท/ticker อังกฤษ
+- ชื่อบริษัทและตัวย่อหุ้น (ticker) ต้องถูกต้อง
+- หากข้อมูลไม่แน่ชัด ให้ระบุว่า "ยังไม่มีข้อมูลยืนยัน"
+
+เป้าหมาย: รายงานที่ถูกต้อง กระชับ ไม่สรุปเกินหลักฐานในข่าว
+
+=== รูปแบบการเขียน ===
+- ห้ามใช้ Markdown (###, **, __) ใช้อีโมจีและข้อความล้วน
+- ทุกบริษัท/หุ้นใส่ ticker เช่น Nvidia (NVDA); ทุกดัชนีใส่ชื่อย่อ เช่น S&P 500 (SPX)
+- ระดับความสำคัญนำหน้าข่าวเด่น: 🔴 กระทบแรง, 🟡 ปานกลาง, 🟢 ทั่วไป
+- แต่ละข่าวแนบลิงก์ต้นฉบับบรรทัดใหม่ ขึ้นต้น "🔗 " ตามด้วย URL ที่ให้มา
+
+=== โครงสร้างข้อความ ===
 
 บรรทัดแรก: "{mode_header}"
 บรรทัดสอง: "🇹🇭 {date_str} น. | 🇺🇸 {et_time} ET"
 {mode_instruction}
 
 📈 หุ้น
-วิเคราะห์แต่ละข่าวเข้มๆ: บริษัท+ticker, ตัวเลข %/ราคาที่มี, สาเหตุเชิงลึก, ผลต่อราคาหุ้นและ sector, มุมมองระยะสั้น
+(ตามกฎข้อ 2 + แนบ 🔗 ลิงก์)
 
 💰 เศรษฐกิจ
-เจาะตัวเลขเศรษฐกิจ (เงินเฟ้อ ดอกเบี้ย GDP จ้างงาน) พร้อมนัยต่อนโยบาย Fed และตลาด
+(ตามกฎข้อ 3)
 
 🌍 สถานการณ์โลก
-เหตุการณ์ที่กระทบตลาด/เศรษฐกิจ พร้อมประเมินผลกระทบ
+(ตามกฎข้อ 4 + แนบ 🔗 ลิงก์)
 
 🔥 Sector วันนี้
-sector ไหนร้อน (เงินไหลเข้า) / เย็น (เงินไหลออก) พร้อมเหตุผลสั้นๆ
+(ตามกฎข้อ 5)
 
 👀 ปัจจัยต้องจับตา
-ตัวเลขเศรษฐกิจ/งบบริษัท/เหตุการณ์ที่จะเกิดข้างหน้าและอาจกระทบตลาด
+(ตามกฎข้อ 7)
 
-🎯 มุมมองการลงทุน
-- โทนตลาด: Risk-on (กล้าเสี่ยง) หรือ Risk-off (หลบความเสี่ยง) พร้อมเหตุผล
-- หุ้น/sector น่าจับตา (พร้อม ticker)
-- ความเสี่ยงหลักที่ต้องระวัง
-- สรุปภาพรวม 1-2 ประโยค
-
-หมายเหตุ: หัวข้อไหนไม่มีข่าวใหม่ให้ข้ามไป แต่ 🎯 มุมมองการลงทุน ต้องมีเสมอ
+🎯 มุมมองการลงทุน / Market Sentiment
+(ตามกฎข้อ 6 — ระบุ Sentiment, หุ้น/sector น่าจับตาถ้ามีในข่าว, ความเสี่ยง, สรุป 1-2 ประโยค)
 
 === ข่าวหุ้น ===
-{chr(10).join(stock_items) if stock_items else "(ไม่มีข่าวใหม่)"}
+{fmt(stock_items)}
 
 === ข่าวเศรษฐกิจ ===
-{chr(10).join(econ_items) if econ_items else "(ไม่มีข่าวใหม่)"}
+{fmt(econ_items)}
 
 === ข่าวสถานการณ์โลก ===
-{chr(10).join(world_items) if world_items else "(ไม่มีข่าวใหม่)"}
+{fmt(world_items)}
 """
 
 api = os.environ["GROQ_API_KEY"]
@@ -148,7 +221,7 @@ for model in MODELS:
     data = r.json()
     if "choices" in data:
         text = data["choices"][0]["message"]["content"]
-        print(f"ใช้ model: {model} | {mode_header} | {et_time} ET")
+        print(f"ใช้ model: {model} | {mode_header} | {et_time} ET (offset {et_offset})")
         break
     else:
         print(f"model {model} ใช้ไม่ได้:", data.get("error", data))
@@ -159,7 +232,8 @@ if text is None:
 def send_telegram(msg):
     resp = requests.post(
         f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
-        json={"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": msg}
+        json={"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": msg,
+              "disable_web_page_preview": True}
     )
     if not resp.ok:
         print("Telegram error:", resp.text)
