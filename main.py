@@ -2,19 +2,28 @@ import os, requests, feedparser, json, hashlib
 from datetime import datetime, timezone, timedelta, date
 
 RSS_STOCK = [
-    "https://feeds.content.dowjones.io/public/rss/mw_topstories",
-    "https://www.cnbc.com/id/100003114/device/rss/rss.html",
-    "https://finance.yahoo.com/news/rssindex",
-    "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+    "https://feeds.content.dowjones.io/public/rss/mw_topstories",     # MarketWatch top
+    "https://feeds.content.dowjones.io/public/rss/mw_marketpulse",    # MarketWatch pulse
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",          # CNBC top
+    "https://www.cnbc.com/id/10000664/device/rss/rss.html",           # CNBC markets
+    "https://www.cnbc.com/id/15839135/device/rss/rss.html",           # CNBC finance
+    "https://finance.yahoo.com/news/rssindex",                        # Yahoo Finance
+    "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",                  # WSJ Markets
+    "https://www.investing.com/rss/news_25.rss",                      # Investing.com stock
+    "https://seekingalpha.com/market_currents.xml",                   # Seeking Alpha
 ]
 RSS_ECON = [
-    "https://www.cnbc.com/id/20910258/device/rss/rss.html",
-    "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",
+    "https://www.cnbc.com/id/20910258/device/rss/rss.html",           # CNBC Economy
+    "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",      # WSJ/DJ World
+    "https://www.investing.com/rss/news_14.rss",                      # Investing economy
+    "https://feeds.a.dj.com/rss/RSSEconomy.xml",                      # WSJ Economy
 ]
 RSS_WORLD = [
-    "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "https://www.aljazeera.com/xml/rss/all.xml",
-    "http://rss.cnn.com/rss/edition_world.rss",
+    "https://feeds.bbci.co.uk/news/business/rss.xml",                 # BBC Business
+    "https://feeds.bbci.co.uk/news/world/rss.xml",                    # BBC World
+    "https://www.aljazeera.com/xml/rss/all.xml",                      # Al Jazeera
+    "http://rss.cnn.com/rss/money_news_international.rss",             # CNN Money Intl
+    "https://feeds.content.dowjones.io/public/rss/RSSWSJD",           # WSJ Tech
 ]
 
 SEEN_FILE = "sent_news.json"
@@ -52,9 +61,9 @@ def fetch(urls, n=6):
             print("RSS error:", url, ex)
     return out
 
-stock_items = fetch(RSS_STOCK, n=8)
-econ_items = fetch(RSS_ECON, n=6)
-world_items = fetch(RSS_WORLD, n=6)
+stock_items = fetch(RSS_STOCK, n=6)
+econ_items = fetch(RSS_ECON, n=5)
+world_items = fetch(RSS_WORLD, n=5)
 
 total_new = len(stock_items) + len(econ_items) + len(world_items)
 print(f"ข่าวใหม่ที่เจอ: {total_new}")
@@ -236,7 +245,7 @@ for p in PROVIDERS:
         continue
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}],
-               "temperature": 0.55, "max_tokens": 2500}
+               "temperature": 0.55, "max_tokens": 3500}
     try:
         r = requests.post(p["url"], headers=headers, json=payload, timeout=120)
         data = r.json()
