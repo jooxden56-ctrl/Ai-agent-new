@@ -261,24 +261,32 @@ prompt = f"""คุณเป็นนักวิเคราะห์การ�
 # เรียงจากคุณภาพดีสุดก่อน ตัวใหญ่เขียนได้ลึกกว่า ถ้าหมดโควตาค่อยลดลง
 PROVIDERS = [
     {
+        # ตัวหลัก: Cerebras limit สูงกว่า Groq มาก ตอบข่าวยาวได้เต็มที่
         "name": "Cerebras-120b",
         "url": "https://api.cerebras.ai/v1/chat/completions",
         "key_env": "CEREBRAS_API_KEY",
         "model": "gpt-oss-120b",
+        "max_tokens": 6000,
     },
     {
+        # สำรอง: Groq gpt-oss จำกัด 8K tokens/นาที (input+output รวมกัน)
+        # prompt ยาว ~4-5K แล้ว จึงเหลือ output ได้แค่ ~2500 กัน 413 rate_limit
         "name": "Groq-gpt-oss-120b",
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "key_env": "GROQ_API_KEY",
         "model": "openai/gpt-oss-120b",
+        "max_tokens": 2500,
     },
     {
         "name": "Groq-gpt-oss-20b",
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "key_env": "GROQ_API_KEY",
         "model": "openai/gpt-oss-20b",
+        "max_tokens": 2500,
     },
 ]
+
+import time
 
 text = None
 for p in PROVIDERS:
@@ -288,22 +296,33 @@ for p in PROVIDERS:
         continue
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     payload = {"model": p["model"], "messages": [{"role": "user", "content": prompt}],
-               "temperature": 0.5, "max_tokens": 6000}
-    # ลองซ้ำ 2 ครั้งเผื่อ timeout/error ชั่วคราว
-    for attempt in range(2):
+               "temperature": 0.5, "max_tokens": p.get("max_tokens", 4000)}
+    # ลองซ้ำ 3 ครั้ง: timeout/rate-limit ชั่วคราว รอแล้วลองใหม่ได้
+    for attempt in range(3):
         try:
             r = requests.post(p["url"], headers=headers, json=payload, timeout=120)
+            status = r.status_code
             data = r.json()
         except Exception as ex:
             print(f"{p['name']} error (attempt {attempt+1}):", ex)
+            time.sleep(3)
             continue
+
         if "choices" in data:
             text = data["choices"][0]["message"]["content"].strip()
             print(f"ใช้ {p['name']} ({p['model']}) | {mode_header} | {et_time} ET (offset {et_offset})")
             break
-        else:
-            print(f"{p['name']} ใช้ไม่ได้:", data.get("error", data))
-            break  # error จาก API (เช่นโควตาหมด) ลองซ้ำไม่ช่วย ข้ามไป provider ถัดไป
+
+        # 413/429 = ติด rate limit ต่อนาที รอแล้วลองใหม่กับ provider เดิม
+        if status in (413, 429):
+            wait = 20 * (attempt + 1)
+            print(f"{p['name']} rate limit ({status}) attempt {attempt+1} รอ {wait}s แล้วลองใหม่")
+            time.sleep(wait)
+            continue
+
+        # error อื่น (เช่น permission/โควตาหมด) ลองซ้ำไม่ช่วย ข้ามไป provider ถัดไป
+        print(f"{p['name']} ใช้ไม่ได้ ({status}):", data.get("error", data))
+        break
     if text:
         break
 
