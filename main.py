@@ -267,16 +267,16 @@ PROVIDERS = [
         "model": "gpt-oss-120b",
     },
     {
-        "name": "Groq-70b",
+        "name": "Groq-gpt-oss-120b",
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "key_env": "GROQ_API_KEY",
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
     },
     {
-        "name": "Groq-8b",
+        "name": "Groq-gpt-oss-20b",
         "url": "https://api.groq.com/openai/v1/chat/completions",
         "key_env": "GROQ_API_KEY",
-        "model": "llama-3.1-8b-instant",
+        "model": "openai/gpt-oss-20b",
     },
 ]
 
